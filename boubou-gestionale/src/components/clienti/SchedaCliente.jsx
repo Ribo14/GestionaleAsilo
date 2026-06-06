@@ -1,0 +1,188 @@
+import { useState, useEffect } from 'react'
+import Badge from '../ui/Badge'
+import Modal from '../ui/Modal'
+import SchedaCane from './SchedaCane'
+import GestionePacchetti from './GestionePacchetti'
+import { subscribeCani, addCane, updateCane, deleteCane } from '../../firebase/firestore'
+import { usePacchetti } from '../../hooks/usePacchetti'
+import { useAccessi } from '../../hooks/useAccessi'
+import { addPacchetto, updatePacchetto } from '../../firebase/firestore'
+
+function StoricoCane({ cane }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+      {cane.nome}
+    </span>
+  )
+}
+
+export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }) {
+  const [cani, setCani] = useState([])
+  const [tabAttiva, setTabAttiva] = useState('info')
+  const [modaleCane, setModaleCane] = useState(null) // null | 'nuovo' | cane
+  const [meseFiltro, setMeseFiltro] = useState(() => new Date().toISOString().slice(0, 7))
+
+  const { pacchetti, creditiDisponibili } = usePacchetti(cliente.id)
+  const { accessi } = useAccessi(cliente.id)
+
+  useEffect(() => {
+    const unsub = subscribeCani(cliente.id, setCani)
+    return unsub
+  }, [cliente.id])
+
+  const accessiFiltrati = meseFiltro
+    ? accessi.filter((a) => a.data?.startsWith(meseFiltro))
+    : accessi
+
+  async function salvaCane(form) {
+    if (modaleCane === 'nuovo') {
+      await addCane(cliente.id, form)
+    } else {
+      await updateCane(cliente.id, modaleCane.id, form)
+    }
+    setModaleCane(null)
+  }
+
+  async function eliminaCane() {
+    if (!window.confirm(`Eliminare ${modaleCane.nome}?`)) return
+    await deleteCane(cliente.id, modaleCane.id)
+    setModaleCane(null)
+  }
+
+  const TABS = ['info', 'cani', 'pacchetti', 'storico']
+  const labelTab = { info: 'Info', cani: `Cani (${cani.length})`, pacchetti: 'Pacchetti', storico: 'Storico' }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          <button onClick={onBack} className="text-primary font-medium text-sm">← Clienti</button>
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => onModifica(cliente)} className="text-sm text-gray-500 hover:text-gray-700">Modifica</button>
+            <button onClick={() => onElimina(cliente)} className="text-sm text-danger hover:text-red-700">Elimina</button>
+          </div>
+        </div>
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{cliente.nome}</h2>
+            {cliente.telefono && <p className="text-sm text-gray-500">{cliente.telefono}</p>}
+            {cliente.email && <p className="text-sm text-gray-500">{cliente.email}</p>}
+          </div>
+          <Badge variant="default" className="ml-2 shrink-0">
+            {creditiDisponibili} crediti
+          </Badge>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex border-b border-gray-200 bg-white px-2">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTabAttiva(t)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tabAttiva === t
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {labelTab[t]}
+          </button>
+        ))}
+      </div>
+
+      {/* Contenuto */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {tabAttiva === 'info' && (
+          <div className="space-y-2 text-sm text-gray-700">
+            {cliente.note ? <p className="bg-gray-50 rounded-xl p-3">{cliente.note}</p> : <p className="text-gray-400">Nessuna nota</p>}
+          </div>
+        )}
+
+        {tabAttiva === 'cani' && (
+          <div className="space-y-3">
+            <button
+              onClick={() => setModaleCane('nuovo')}
+              className="w-full border-2 border-dashed border-primary/40 text-primary rounded-xl py-3 text-sm font-medium hover:bg-primary-light transition-colors"
+            >
+              + Aggiungi cane
+            </button>
+            {cani.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => setModaleCane(c)}
+                className="bg-white border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-primary/40 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-gray-800">{c.nome}</span>
+                  <div className="flex gap-1.5">
+                    {c.sterilizzato && <Badge variant="gray">Sterilizzato</Badge>}
+                  </div>
+                </div>
+                {c.razza && <p className="text-sm text-gray-500 mt-0.5">{c.razza}{c.eta ? ` · ${c.eta} anni` : ''}</p>}
+                {c.note && <p className="text-xs text-gray-400 mt-1">{c.note}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tabAttiva === 'pacchetti' && (
+          <GestionePacchetti
+            clienteId={cliente.id}
+            pacchetti={pacchetti}
+            onAggiungi={addPacchetto}
+            onAggiorna={updatePacchetto}
+          />
+        )}
+
+        {tabAttiva === 'storico' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Mese:</label>
+              <input
+                type="month"
+                value={meseFiltro}
+                onChange={(e) => setMeseFiltro(e.target.value)}
+                className="input-field w-auto flex-1"
+              />
+            </div>
+            {accessiFiltrati.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">Nessun accesso nel periodo</p>
+            )}
+            {accessiFiltrati.map((a) => (
+              <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-gray-800 text-sm">{a.data}</span>
+                  <Badge variant="default">{a.creditiEffettivi} cr</Badge>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {a.cani?.map((c) => <StoricoCane key={c.caneId} cane={c} />)}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {a.orarioIngresso}–{a.orarioUscita}
+                  {a.piscina && ' · Piscina'}
+                  {a.agevolazione && ' · Agevolazione'}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {modaleCane && (
+        <Modal
+          titolo={modaleCane === 'nuovo' ? 'Nuovo cane' : `Modifica ${modaleCane.nome}`}
+          onClose={() => setModaleCane(null)}
+        >
+          <SchedaCane
+            cane={modaleCane === 'nuovo' ? null : modaleCane}
+            onSalva={salvaCane}
+            onAnnulla={() => setModaleCane(null)}
+            onElimina={modaleCane !== 'nuovo' ? eliminaCane : null}
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}

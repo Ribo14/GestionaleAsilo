@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    @apply text-gray-900 bg-neutral;
+  }
+}
+
+@layer components {
+  .input-field {
+    @apply w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base
+           focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
+           transition bg-white;
+  }
+}
