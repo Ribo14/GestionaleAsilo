@@ -58,12 +58,26 @@ export default function ListaClienti() {
 
   if (clienteSelezionato) {
     return (
-      <SchedaCliente
-        cliente={clienteSelezionato}
-        onBack={() => setClienteSelezionato(null)}
-        onModifica={(c) => { setClienteModifica(c); setMostraForm(true) }}
-        onElimina={handleElimina}
-      />
+      <>
+        <SchedaCliente
+          cliente={clienteSelezionato}
+          onBack={() => setClienteSelezionato(null)}
+          onModifica={(c) => { setClienteModifica(c); setMostraForm(true) }}
+          onElimina={handleElimina}
+        />
+        {mostraForm && (
+          <Modal
+            titolo="Modifica cliente"
+            onClose={() => { setMostraForm(false); setClienteModifica(null) }}
+          >
+            <FormCliente
+              cliente={clienteModifica}
+              onSalva={handleSalva}
+              onAnnulla={() => { setMostraForm(false); setClienteModifica(null) }}
+            />
+          </Modal>
+        )}
+      </>
     )
   }
 

@@ -3,6 +3,7 @@ import Badge from '../ui/Badge'
 import CreditiBar from '../ui/CreditiBar'
 import Modal from '../ui/Modal'
 import { PREZZI_PACCHETTI } from '../../utils/calcoloCrediti'
+import { formatData } from '../../utils/reportMensile'
 
 const TIPI = [
   { value: 'singolo', label: 'Singolo (1 credito) — 5,00 €/cr' },
@@ -11,14 +12,16 @@ const TIPI = [
   { value: '200', label: 'Pacchetto 200 crediti — 3,75 €/cr' },
 ]
 
-function FormPacchetto({ onSalva, onAnnulla }) {
+function FormPacchetto({ pacchetto, onSalva, onAnnulla }) {
   const oggi = new Date().toISOString().slice(0, 10)
+  const isModifica = !!pacchetto
+
   const [form, setForm] = useState({
-    tipo: '100',
-    dataAcquisto: oggi,
-    pagato: true,
-    metodoPagamento: 'contanti',
-    note: '',
+    tipo: pacchetto?.tipo ?? '100',
+    dataAcquisto: pacchetto?.dataAcquisto ?? oggi,
+    pagato: pacchetto?.pagato ?? true,
+    metodoPagamento: pacchetto?.metodoPagamento ?? 'contanti',
+    note: pacchetto?.note ?? '',
   })
 
   const set = (k) => (e) =>
@@ -27,12 +30,20 @@ function FormPacchetto({ onSalva, onAnnulla }) {
   async function handleSubmit(e) {
     e.preventDefault()
     const info = PREZZI_PACCHETTI[form.tipo]
-    await onSalva({
+    const datiBase = {
       ...form,
       creditiTotali: info.crediti,
-      creditiResidui: info.crediti,
       valoreCreditoEuro: info.valoreCreditoEuro,
-    })
+    }
+    if (isModifica) {
+      // In modifica, aggiorna creditiResidui solo se cambia il tipo
+      const creditiResidui = form.tipo !== pacchetto.tipo
+        ? info.crediti
+        : pacchetto.creditiResidui
+      await onSalva({ ...datiBase, creditiResidui })
+    } else {
+      await onSalva({ ...datiBase, creditiResidui: info.crediti })
+    }
   }
 
   return (
@@ -81,19 +92,40 @@ function FormPacchetto({ onSalva, onAnnulla }) {
           Annulla
         </button>
         <button type="submit" className="flex-1 bg-primary text-white py-2.5 rounded-xl hover:bg-primary-dark transition-colors font-medium">
-          Aggiungi
+          {isModifica ? 'Salva' : 'Aggiungi'}
         </button>
       </div>
     </form>
   )
 }
 
-export default function GestionePacchetti({ clienteId, pacchetti, onAggiungi, onAggiorna }) {
+export default function GestionePacchetti({ clienteId, pacchetti, onAggiungi, onAggiorna, onElimina }) {
   const [mostraForm, setMostraForm] = useState(false)
+  const [pacchettoModifica, setPacchettoModifica] = useState(null)
 
   async function handleSalva(data) {
-    await onAggiungi(clienteId, data)
+    if (pacchettoModifica) {
+      await onAggiorna(clienteId, pacchettoModifica.id, data)
+      setPacchettoModifica(null)
+    } else {
+      await onAggiungi(clienteId, data)
+    }
     setMostraForm(false)
+  }
+
+  async function handleElimina(p) {
+    if (!window.confirm(`Eliminare il pacchetto da ${p.creditiTotali} crediti?`)) return
+    await onElimina(clienteId, p.id)
+  }
+
+  function apriModifica(p) {
+    setPacchettoModifica(p)
+    setMostraForm(true)
+  }
+
+  function chiudiForm() {
+    setMostraForm(false)
+    setPacchettoModifica(null)
   }
 
   return (
@@ -133,23 +165,48 @@ export default function GestionePacchetti({ clienteId, pacchetti, onAggiungi, on
           </div>
           <CreditiBar residui={p.creditiResidui} totali={p.creditiTotali} />
           <p className="text-xs text-gray-400">
-            Acquistato il {p.dataAcquisto}
+            Acquistato il {formatData(p.dataAcquisto)}
             {p.note && ` — ${p.note}`}
           </p>
-          {!p.pagato && (
-            <button
-              onClick={() => onAggiorna(clienteId, p.id, { pagato: true, metodoPagamento: 'contanti' })}
-              className="text-xs text-primary font-medium hover:underline"
-            >
-              Segna come pagato
-            </button>
-          )}
+          <div className="flex items-center justify-between pt-1">
+            {!p.pagato ? (
+              <button
+                onClick={() => onAggiorna(clienteId, p.id, { pagato: true, metodoPagamento: 'contanti' })}
+                className="text-xs text-primary font-medium hover:underline"
+              >
+                Segna come pagato
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => apriModifica(p)}
+                className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+              >
+                Modifica
+              </button>
+              <button
+                onClick={() => handleElimina(p)}
+                className="text-xs text-danger hover:text-red-700 font-medium"
+              >
+                Elimina
+              </button>
+            </div>
+          </div>
         </div>
       ))}
 
       {mostraForm && (
-        <Modal titolo="Nuovo pacchetto" onClose={() => setMostraForm(false)}>
-          <FormPacchetto onSalva={handleSalva} onAnnulla={() => setMostraForm(false)} />
+        <Modal
+          titolo={pacchettoModifica ? 'Modifica pacchetto' : 'Nuovo pacchetto'}
+          onClose={chiudiForm}
+        >
+          <FormPacchetto
+            pacchetto={pacchettoModifica}
+            onSalva={handleSalva}
+            onAnnulla={chiudiForm}
+          />
         </Modal>
       )}
     </div>

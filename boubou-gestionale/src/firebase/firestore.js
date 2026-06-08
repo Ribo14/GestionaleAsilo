@@ -89,15 +89,22 @@ export async function updatePacchetto(clienteId, pacchettoId, data) {
   return updateDoc(doc(db, 'clienti', clienteId, 'pacchetti', pacchettoId), data)
 }
 
+export async function deletePacchetto(clienteId, pacchettoId) {
+  return deleteDoc(doc(db, 'clienti', clienteId, 'pacchetti', pacchettoId))
+}
+
 export async function getPacchettiAttivi(clienteId) {
   const q = query(
     collection(db, 'clienti', clienteId, 'pacchetti'),
     where('creditiResidui', '>', 0),
-    orderBy('creditiResidui'),
-    orderBy('dataAcquisto')
+    orderBy('creditiResidui')
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return docs.sort((a, b) => {
+    if (a.creditiResidui !== b.creditiResidui) return a.creditiResidui - b.creditiResidui
+    return (a.dataAcquisto || '').localeCompare(b.dataAcquisto || '')
+  })
 }
 
 // ── Accessi ──────────────────────────────────────────────────────────────────
@@ -105,15 +112,14 @@ export async function getPacchettiAttivi(clienteId) {
 export function subscribeAccessi(callback, filters = {}) {
   let q = query(collection(db, 'accessi'), orderBy('data', 'desc'))
   if (filters.clienteId) {
-    q = query(
-      collection(db, 'accessi'),
-      where('clienteId', '==', filters.clienteId),
-      orderBy('data', 'desc')
-    )
+    // orderBy su campo diverso da where == richiede indice composito: si ordina client-side
+    q = query(collection(db, 'accessi'), where('clienteId', '==', filters.clienteId))
   }
-  return onSnapshot(q, (snap) =>
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  )
+  return onSnapshot(q, (snap) => {
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    if (filters.clienteId) docs.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+    callback(docs)
+  })
 }
 
 export async function getAccessiMese(anno, mese) {

@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: {
-    exclude: ['canvg', 'dompurify'],
+  resolve: {
+    alias: {
+      canvg: path.resolve('./src/stubs/empty.js'),
+      dompurify: path.resolve('./src/stubs/empty.js'),
+    },
   },
   build: {
     rollupOptions: {
-      external: ['canvg', 'dompurify'],
       output: {
         manualChunks: {
           firebase: ['firebase/app', 'firebase/firestore'],

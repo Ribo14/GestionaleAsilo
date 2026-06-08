@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useClienti } from '../../hooks/useClienti'
 import { getAccessiMese } from '../../firebase/firestore'
-import { calcolaReportCliente, nomeMese } from '../../utils/reportMensile'
+import { calcolaReportCliente, nomeMese, formatData } from '../../utils/reportMensile'
 import ExportPDF from './ExportPDF'
 
 export default function ReportMensile() {
@@ -122,7 +122,7 @@ export default function ReportMensile() {
                           <tbody>
                             {r.accessi.map((a) => (
                               <tr key={a.id} className="border-b border-gray-50">
-                                <td className="py-1.5 text-gray-700">{a.data}</td>
+                                <td className="py-1.5 text-gray-700">{formatData(a.data)}</td>
                                 <td className="py-1.5 text-gray-600 text-xs">{a.cani?.map((c) => c.nome).join(', ')}</td>
                                 <td className="py-1.5 text-gray-600 text-xs">{a.orarioIngresso}–{a.orarioUscita}</td>
                                 <td className="py-1.5 text-right font-medium text-gray-800">{a.creditiEffettivi}</td>
@@ -133,6 +133,20 @@ export default function ReportMensile() {
                       </div>
                     </div>
                   ))}
+
+                  {dati.length > 1 && (
+                    <div className="bg-primary text-white rounded-xl px-4 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-lg">Totale {nomeMese(mese, anno)}</p>
+                        <p className="text-sm text-white/80">
+                          {dati.reduce((s, r) => s + r.totaleCreditiUsati, 0)} crediti · {dati.length} clienti
+                        </p>
+                      </div>
+                      <p className="text-2xl font-bold">
+                        {dati.reduce((s, r) => s + r.totaleEuro, 0).toFixed(2)} €
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <ExportPDF mese={mese} anno={anno} />
               </>

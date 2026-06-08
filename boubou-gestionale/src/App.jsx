@@ -9,7 +9,7 @@ import BottomNav from './components/ui/BottomNav'
 
 const TABS_DESKTOP = [
   { id: 'clienti', label: 'Clienti', icon: '👥' },
-  { id: 'oggi', label: 'Oggi', icon: '🏠' },
+  { id: 'oggi', label: 'Ingressi', icon: '🏠' },
   { id: 'report', label: 'Report', icon: '📊' },
 ]
 
@@ -36,7 +36,7 @@ export default function App() {
       <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 shrink-0">
         <div className="px-4 py-5 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <img src="/Logo_asilo.jpeg" alt="Boubou" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/Logo_asilo.PNG" alt="Boubou" className="w-10 h-10 rounded-xl object-contain" />
             <div>
               <p className="font-bold text-gray-900 text-sm">Boubou Camp</p>
               <p className="text-xs text-gray-500">Gestionale</p>
@@ -76,7 +76,7 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header mobile */}
         <header className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
-          <img src="/Logo_asilo.jpeg" alt="Boubou" className="w-8 h-8 rounded-lg object-contain" />
+          <img src="/Logo_asilo.PNG" alt="Boubou" className="w-8 h-8 rounded-lg object-contain" />
           <p className="font-bold text-gray-900">Boubou Camp</p>
           <button
             onClick={() => setMostraImpostazioni((v) => !v)}

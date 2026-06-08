@@ -32,6 +32,12 @@ export function calcolaReportCliente(cliente, accessi, pacchetti) {
   }
 }
 
+export function formatData(data) {
+  if (!data) return ''
+  const [y, m, d] = data.split('-')
+  return `${d}-${m}-${y}`
+}
+
 export function nomeMese(mese, anno) {
   return new Date(anno, mese - 1, 1).toLocaleDateString('it-IT', {
     month: 'long',

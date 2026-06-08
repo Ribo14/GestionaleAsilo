@@ -1,3 +1,4 @@
+import { increment } from 'firebase/firestore'
 import { getPacchettiAttivi, updatePacchetto } from '../firebase/firestore'
 
 export async function scalaCreditiFIFO(clienteId, creditiDaScalare) {
@@ -26,7 +27,7 @@ export async function scalaCreditiFIFO(clienteId, creditiDaScalare) {
 export async function ripristinaCreditiFIFO(clienteId, scaleDaPacchetti) {
   for (const scala of scaleDaPacchetti) {
     await updatePacchetto(clienteId, scala.pacchettoId, {
-      creditiResidui: scala.crediti,
+      creditiResidui: increment(scala.crediti),
     })
   }
 }

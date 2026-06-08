@@ -16,7 +16,7 @@ export default function LoginScreen({ onLogin, errore }) {
     <div className="min-h-screen bg-primary-light flex flex-col items-center justify-center p-6">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center space-y-6">
         <img
-          src="/Logo_asilo.jpeg"
+          src="/Logo_asilo.PNG"
           alt="Boubou Camp"
           className="w-24 h-24 object-contain mx-auto rounded-xl"
         />
@@ -44,9 +44,6 @@ export default function LoginScreen({ onLogin, errore }) {
             {loading ? 'Accesso…' : 'Accedi'}
           </button>
         </form>
-        <p className="text-xs text-gray-400">
-          Prima apertura: inserisci la password che vuoi impostare
-        </p>
       </div>
     </div>
   )

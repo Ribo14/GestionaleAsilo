@@ -3,10 +3,13 @@ import Badge from '../ui/Badge'
 import Modal from '../ui/Modal'
 import SchedaCane from './SchedaCane'
 import GestionePacchetti from './GestionePacchetti'
-import { subscribeCani, addCane, updateCane, deleteCane } from '../../firebase/firestore'
+import { subscribeCani, addCane, updateCane, deleteCane, deletePacchetto, updateAccesso, deleteAccesso } from '../../firebase/firestore'
+import { formatData } from '../../utils/reportMensile'
 import { usePacchetti } from '../../hooks/usePacchetti'
 import { useAccessi } from '../../hooks/useAccessi'
 import { addPacchetto, updatePacchetto } from '../../firebase/firestore'
+import { scalaCreditiFIFO, ripristinaCreditiFIFO } from '../../utils/logicaFIFO'
+import FormModificaAccesso from '../oggi/FormModificaAccesso'
 
 function StoricoCane({ cane }) {
   return (
@@ -21,6 +24,8 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
   const [tabAttiva, setTabAttiva] = useState('info')
   const [modaleCane, setModaleCane] = useState(null) // null | 'nuovo' | cane
   const [meseFiltro, setMeseFiltro] = useState(() => new Date().toISOString().slice(0, 7))
+  const [accessoModifica, setAccessoModifica] = useState(null)
+  const [feedbackStorico, setFeedbackStorico] = useState('')
 
   const { pacchetti, creditiDisponibili } = usePacchetti(cliente.id)
   const { accessi } = useAccessi(cliente.id)
@@ -41,6 +46,37 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
       await updateCane(cliente.id, modaleCane.id, form)
     }
     setModaleCane(null)
+  }
+
+  async function handleModificaAccesso(dati) {
+    try {
+      const vecchiCrediti = accessoModifica.creditiEffettivi ?? 0
+      let scaleDaPacchetti = accessoModifica.scaleDaPacchetti || []
+      let avviso = ''
+      if (dati.creditiEffettivi !== vecchiCrediti) {
+        await ripristinaCreditiFIFO(cliente.id, scaleDaPacchetti)
+        const risultato = await scalaCreditiFIFO(cliente.id, dati.creditiEffettivi)
+        scaleDaPacchetti = risultato.scaleDaPacchetti
+        if (risultato.creditiNonCoperti > 0) {
+          avviso = `Aggiornato. Attenzione: ${risultato.creditiNonCoperti} crediti non coperti!`
+        }
+      }
+      await updateAccesso(accessoModifica.id, { ...dati, scaleDaPacchetti })
+      setAccessoModifica(null)
+      if (avviso) {
+        setFeedbackStorico(avviso)
+        setTimeout(() => setFeedbackStorico(''), 4000)
+      }
+    } catch {
+      setFeedbackStorico('Errore nel salvataggio. Riprova.')
+      setTimeout(() => setFeedbackStorico(''), 3000)
+    }
+  }
+
+  async function handleEliminaAccesso(a) {
+    if (!window.confirm('Eliminare questo accesso?')) return
+    await ripristinaCreditiFIFO(cliente.id, a.scaleDaPacchetti || [])
+    await deleteAccesso(a.id)
   }
 
   async function eliminaCane() {
@@ -133,6 +169,7 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
             pacchetti={pacchetti}
             onAggiungi={addPacchetto}
             onAggiorna={updatePacchetto}
+            onElimina={deletePacchetto}
           />
         )}
 
@@ -147,14 +184,33 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
                 className="input-field w-auto flex-1"
               />
             </div>
+            {feedbackStorico && (
+              <p className={`text-sm font-medium text-center ${feedbackStorico.includes('Attenzione') ? 'text-warning' : feedbackStorico.includes('Errore') ? 'text-danger' : 'text-success'}`}>
+                {feedbackStorico}
+              </p>
+            )}
             {accessiFiltrati.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-4">Nessun accesso nel periodo</p>
             )}
             {accessiFiltrati.map((a) => (
               <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-800 text-sm">{a.data}</span>
-                  <Badge variant="default">{a.creditiEffettivi} cr</Badge>
+                  <span className="font-medium text-gray-800 text-sm">{formatData(a.data)}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default">{a.creditiEffettivi} cr</Badge>
+                    <button
+                      onClick={() => setAccessoModifica(a)}
+                      className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                    >
+                      Modifica
+                    </button>
+                    <button
+                      onClick={() => handleEliminaAccesso(a)}
+                      className="text-gray-300 hover:text-danger transition-colors text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1 mb-1">
                   {a.cani?.map((c) => <StoricoCane key={c.caneId} cane={c} />)}
@@ -180,6 +236,19 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
             onSalva={salvaCane}
             onAnnulla={() => setModaleCane(null)}
             onElimina={modaleCane !== 'nuovo' ? eliminaCane : null}
+          />
+        </Modal>
+      )}
+
+      {accessoModifica && (
+        <Modal
+          titolo={`Modifica accesso — ${formatData(accessoModifica.data)}`}
+          onClose={() => setAccessoModifica(null)}
+        >
+          <FormModificaAccesso
+            accesso={accessoModifica}
+            onSalva={handleModificaAccesso}
+            onAnnulla={() => setAccessoModifica(null)}
           />
         </Modal>
       )}
