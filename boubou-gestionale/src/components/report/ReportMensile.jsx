@@ -108,6 +108,28 @@ export default function ReportMensile() {
                         </div>
                       )}
 
+                      {r.haGiornaliero && (
+                        <div className="px-4 py-3 border-b border-gray-100 bg-amber-50">
+                          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Pagamento giornaliero</p>
+                          <div className="flex justify-between text-sm py-0.5">
+                            <span className="text-amber-700">{r.creditiGiornalieriTotali} cr × 5.00 €</span>
+                            <span className="font-medium text-amber-900">{r.importoGiornalieroTotale.toFixed(2)} €</span>
+                          </div>
+                          {r.importoGiornalieroPagato > 0 && (
+                            <div className="flex justify-between text-xs py-0.5">
+                              <span className="text-green-600">Pagato</span>
+                              <span className="font-medium text-green-700">{r.importoGiornalieroPagato.toFixed(2)} €</span>
+                            </div>
+                          )}
+                          {r.importoGiornalieroNonPagato > 0 && (
+                            <div className="flex justify-between text-xs py-0.5">
+                              <span className="text-red-500">Da pagare</span>
+                              <span className="font-medium text-red-600">{r.importoGiornalieroNonPagato.toFixed(2)} €</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="px-4 py-3">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dettaglio giornate</p>
                         <table className="w-full text-sm">
@@ -116,18 +138,28 @@ export default function ReportMensile() {
                               <th className="text-left py-1">Data</th>
                               <th className="text-left py-1">Cani</th>
                               <th className="text-left py-1">Orario</th>
-                              <th className="text-right py-1">Cr</th>
+                              <th className="text-right py-1">Cr / €</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {r.accessi.map((a) => (
-                              <tr key={a.id} className="border-b border-gray-50">
-                                <td className="py-1.5 text-gray-700">{formatData(a.data)}</td>
-                                <td className="py-1.5 text-gray-600 text-xs">{a.cani?.map((c) => c.nome).join(', ')}</td>
-                                <td className="py-1.5 text-gray-600 text-xs">{a.orarioIngresso}–{a.orarioUscita}</td>
-                                <td className="py-1.5 text-right font-medium text-gray-800">{a.creditiEffettivi}</td>
-                              </tr>
-                            ))}
+                            {r.accessi.map((a) => {
+                              const pg = a.pagamentoGiornaliero
+                              return (
+                                <tr key={a.id} className={`border-b border-gray-50 ${pg ? 'bg-amber-50' : ''}`}>
+                                  <td className="py-1.5 text-gray-700">{formatData(a.data)}</td>
+                                  <td className="py-1.5 text-gray-600 text-xs">{a.cani?.map((c) => c.nome).join(', ')}</td>
+                                  <td className="py-1.5 text-gray-600 text-xs">{a.orarioIngresso}–{a.orarioUscita}</td>
+                                  <td className="py-1.5 text-right font-medium text-gray-800">
+                                    {a.creditiEffettivi} cr
+                                    {pg && (
+                                      <span className="block text-xs text-amber-700">
+                                        {pg.importo?.toFixed(2)} € · {pg.pagato ? '✓ Pagato' : '⚠ Da pagare'}
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>

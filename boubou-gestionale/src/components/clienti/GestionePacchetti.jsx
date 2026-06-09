@@ -6,7 +6,7 @@ import { PREZZI_PACCHETTI } from '../../utils/calcoloCrediti'
 import { formatData } from '../../utils/reportMensile'
 
 const TIPI = [
-  { value: 'singolo', label: 'Singolo (1 credito) — 5,00 €/cr' },
+  { value: '10', label: 'Pacchetto 10 crediti — 5,00 €/cr' },
   { value: '50', label: 'Pacchetto 50 crediti — 4,50 €/cr' },
   { value: '100', label: 'Pacchetto 100 crediti — 4,25 €/cr' },
   { value: '200', label: 'Pacchetto 200 crediti — 3,75 €/cr' },
@@ -154,7 +154,7 @@ export default function GestionePacchetti({ clienteId, pacchetti, onAggiungi, on
           <div className="flex items-start justify-between">
             <div>
               <span className="font-medium text-gray-800">
-                {p.tipo === 'singolo' ? 'Singolo' : `Pacchetto ${p.tipo} crediti`}
+                Pacchetto {p.tipo} crediti
               </span>
               <span className="text-sm text-gray-500 ml-2">@ {p.valoreCreditoEuro?.toFixed(2)} €/cr</span>
             </div>

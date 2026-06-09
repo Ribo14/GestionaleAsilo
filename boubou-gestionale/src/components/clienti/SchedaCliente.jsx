@@ -9,6 +9,7 @@ import { usePacchetti } from '../../hooks/usePacchetti'
 import { useAccessi } from '../../hooks/useAccessi'
 import { addPacchetto, updatePacchetto } from '../../firebase/firestore'
 import { scalaCreditiFIFO, ripristinaCreditiFIFO } from '../../utils/logicaFIFO'
+import { VALORE_CREDITO_GIORNALIERO } from '../../utils/calcoloCrediti'
 import FormModificaAccesso from '../oggi/FormModificaAccesso'
 
 function StoricoCane({ cane }) {
@@ -23,7 +24,6 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
   const [cani, setCani] = useState([])
   const [tabAttiva, setTabAttiva] = useState('info')
   const [modaleCane, setModaleCane] = useState(null) // null | 'nuovo' | cane
-  const [meseFiltro, setMeseFiltro] = useState(() => new Date().toISOString().slice(0, 7))
   const [accessoModifica, setAccessoModifica] = useState(null)
   const [feedbackStorico, setFeedbackStorico] = useState('')
 
@@ -35,9 +35,16 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
     return unsub
   }, [cliente.id])
 
-  const accessiFiltrati = meseFiltro
-    ? accessi.filter((a) => a.data?.startsWith(meseFiltro))
-    : accessi
+  const accessiOrdinati = [...accessi].sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+
+  const accessiPerMese = accessiOrdinati.reduce((acc, a) => {
+    const mese = a.data?.slice(0, 7) || 'sconosciuto'
+    if (!acc[mese]) acc[mese] = []
+    acc[mese].push(a)
+    return acc
+  }, {})
+
+  const mesiOrdinati = Object.keys(accessiPerMese).sort((a, b) => b.localeCompare(a))
 
   async function salvaCane(form) {
     if (modaleCane === 'nuovo') {
@@ -53,6 +60,22 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
       const vecchiCrediti = accessoModifica.creditiEffettivi ?? 0
       let scaleDaPacchetti = accessoModifica.scaleDaPacchetti || []
       let avviso = ''
+
+      if (dati.pagamentoGiornaliero) {
+        const isPuroDailyAccesso = scaleDaPacchetti.length === 0
+        let updatedPagGiorn = dati.pagamentoGiornaliero
+        if (isPuroDailyAccesso && dati.creditiEffettivi !== vecchiCrediti) {
+          updatedPagGiorn = {
+            ...updatedPagGiorn,
+            crediti: dati.creditiEffettivi,
+            importo: dati.creditiEffettivi * VALORE_CREDITO_GIORNALIERO,
+          }
+        }
+        await updateAccesso(accessoModifica.id, { ...dati, pagamentoGiornaliero: updatedPagGiorn })
+        setAccessoModifica(null)
+        return
+      }
+
       if (dati.creditiEffettivi !== vecchiCrediti) {
         await ripristinaCreditiFIFO(cliente.id, scaleDaPacchetti)
         const risultato = await scalaCreditiFIFO(cliente.id, dati.creditiEffettivi)
@@ -174,52 +197,65 @@ export default function SchedaCliente({ cliente, onBack, onModifica, onElimina }
         )}
 
         {tabAttiva === 'storico' && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Mese:</label>
-              <input
-                type="month"
-                value={meseFiltro}
-                onChange={(e) => setMeseFiltro(e.target.value)}
-                className="input-field w-auto flex-1"
-              />
-            </div>
+          <div className="space-y-4">
             {feedbackStorico && (
               <p className={`text-sm font-medium text-center ${feedbackStorico.includes('Attenzione') ? 'text-warning' : feedbackStorico.includes('Errore') ? 'text-danger' : 'text-success'}`}>
                 {feedbackStorico}
               </p>
             )}
-            {accessiFiltrati.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Nessun accesso nel periodo</p>
+            {accessi.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">Nessun accesso registrato</p>
             )}
-            {accessiFiltrati.map((a) => (
-              <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-800 text-sm">{formatData(a.data)}</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="default">{a.creditiEffettivi} cr</Badge>
-                    <button
-                      onClick={() => setAccessoModifica(a)}
-                      className="text-xs text-gray-500 hover:text-gray-700 font-medium"
-                    >
-                      Modifica
-                    </button>
-                    <button
-                      onClick={() => handleEliminaAccesso(a)}
-                      className="text-gray-300 hover:text-danger transition-colors text-lg leading-none"
-                    >
-                      ×
-                    </button>
-                  </div>
+            {mesiOrdinati.map((mese) => (
+              <div key={mese}>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">
+                  {new Date(mese + '-01').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
+                </h3>
+                <div className="space-y-2">
+                  {accessiPerMese[mese].map((a) => {
+                    const pg = a.pagamentoGiornaliero
+                    return (
+                      <div key={a.id} className={`border rounded-xl p-3 ${pg ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-gray-800 text-sm">{formatData(a.data)}</span>
+                            {pg && <span className="text-xs bg-amber-100 text-amber-700 font-medium px-1.5 py-0.5 rounded-full">Pagamento giornaliero</span>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge variant="default">{a.creditiEffettivi} cr</Badge>
+                            {pg && <span className="text-sm font-semibold text-amber-800">{pg.importo?.toFixed(2)} €</span>}
+                            {pg && (
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${pg.pagato ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                {pg.pagato ? 'Pagato' : 'Da pagare'}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => setAccessoModifica(a)}
+                              className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                            >
+                              Modifica
+                            </button>
+                            <button
+                              onClick={() => handleEliminaAccesso(a)}
+                              className="text-gray-300 hover:text-danger transition-colors text-lg leading-none"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {a.cani?.map((c) => <StoricoCane key={c.caneId} cane={c} />)}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {a.orarioIngresso}–{a.orarioUscita}
+                          {a.piscina && ' · Piscina'}
+                          {a.agevolazione && ' · Agevolazione'}
+                          {pg && ` · ${pg.metodoPagamento}`}
+                        </p>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="flex flex-wrap gap-1 mb-1">
-                  {a.cani?.map((c) => <StoricoCane key={c.caneId} cane={c} />)}
-                </div>
-                <p className="text-xs text-gray-500">
-                  {a.orarioIngresso}–{a.orarioUscita}
-                  {a.piscina && ' · Piscina'}
-                  {a.agevolazione && ' · Agevolazione'}
-                </p>
               </div>
             ))}
           </div>

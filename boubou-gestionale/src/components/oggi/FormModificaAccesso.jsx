@@ -19,6 +19,15 @@ export default function FormModificaAccesso({ accesso, onSalva, onAnnulla }) {
     note: accesso.note ?? '',
   })
 
+  const [pagGiornaliero, setPagGiornaliero] = useState(
+    accesso.pagamentoGiornaliero
+      ? {
+          pagato: accesso.pagamentoGiornaliero.pagato ?? false,
+          metodoPagamento: accesso.pagamentoGiornaliero.metodoPagamento ?? 'contanti',
+        }
+      : null
+  )
+
   const set = (k) => (e) =>
     setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
@@ -48,7 +57,15 @@ export default function FormModificaAccesso({ accesso, onSalva, onAnnulla }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    await onSalva({ ...form, creditiCalcolati })
+    const data = { ...form, creditiCalcolati }
+    if (pagGiornaliero !== null) {
+      data.pagamentoGiornaliero = {
+        ...accesso.pagamentoGiornaliero,
+        pagato: pagGiornaliero.pagato,
+        metodoPagamento: pagGiornaliero.metodoPagamento,
+      }
+    }
+    await onSalva(data)
   }
 
   return (
@@ -121,6 +138,39 @@ export default function FormModificaAccesso({ accesso, onSalva, onAnnulla }) {
           />
         )}
       </div>
+
+      {/* Sezione pagamento giornaliero (solo se l'accesso è pay-daily) */}
+      {pagGiornaliero !== null && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-800">Pagamento giornaliero</p>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-amber-700">Importo</span>
+            <span className="text-lg font-bold text-amber-900">
+              {(accesso.pagamentoGiornaliero?.importo ?? 0).toFixed(2)} €
+            </span>
+          </div>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pagGiornaliero.pagato}
+              onChange={(e) => setPagGiornaliero((p) => ({ ...p, pagato: e.target.checked }))}
+              className="w-5 h-5 rounded accent-amber-600"
+            />
+            <span className="text-sm font-medium text-amber-800">Pagato</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-amber-700">Metodo</span>
+            <select
+              value={pagGiornaliero.metodoPagamento}
+              onChange={(e) => setPagGiornaliero((p) => ({ ...p, metodoPagamento: e.target.value }))}
+              className="flex-1 border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            >
+              <option value="contanti">Contanti</option>
+              <option value="bonifico">Bonifico</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>

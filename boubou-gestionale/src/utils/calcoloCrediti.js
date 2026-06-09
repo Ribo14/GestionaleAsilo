@@ -1,10 +1,12 @@
+export const VALORE_CREDITO_GIORNALIERO = 5
+
 export const TARIFFE = {
   giornataIntera: { primo: 7, secondo: 5 },
   mezzaGiornata: { primo: 5, secondo: 3 },
 }
 
 export const PREZZI_PACCHETTI = {
-  singolo: { crediti: 1, valoreCreditoEuro: 5.0 },
+  '10': { crediti: 10, valoreCreditoEuro: 5.0 },
   '50': { crediti: 50, valoreCreditoEuro: 4.5 },
   '100': { crediti: 100, valoreCreditoEuro: 4.25 },
   '200': { crediti: 200, valoreCreditoEuro: 3.75 },

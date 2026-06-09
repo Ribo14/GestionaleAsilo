@@ -4,10 +4,9 @@ import Modal from '../ui/Modal'
 import FormModificaAccesso from './FormModificaAccesso'
 import { useClienti } from '../../hooks/useClienti'
 import { useAccessi } from '../../hooks/useAccessi'
-import { subscribeCani, updateAccesso } from '../../firebase/firestore'
+import { subscribeCani, updateAccesso, addAccesso, deleteAccesso, getPacchettiAttivi } from '../../firebase/firestore'
 import { scalaCreditiFIFO, ripristinaCreditiFIFO } from '../../utils/logicaFIFO'
-import { calcolaCrediti, determinaTipoGiornata } from '../../utils/calcoloCrediti'
-import { addAccesso, deleteAccesso } from '../../firebase/firestore'
+import { calcolaCrediti, determinaTipoGiornata, VALORE_CREDITO_GIORNALIERO } from '../../utils/calcoloCrediti'
 import { formatData } from '../../utils/reportMensile'
 
 const ORARI_DEFAULT = {
@@ -38,6 +37,12 @@ export default function RegistrazioneAccesso() {
   const [feedback, setFeedback] = useState('')
   const [accessoModifica, setAccessoModifica] = useState(null)
 
+  // Pay-daily states
+  const [pacchettiAttivi, setPacchettiAttivi] = useState([])
+  const [pacchettiLoaded, setPacchettiLoaded] = useState(false)
+  const [sceltaGiornaliero, setSceltaGiornaliero] = useState('misto')
+  const [pagGiornaliero, setPagGiornaliero] = useState({ pagato: false, metodoPagamento: 'contanti' })
+
   const clienteFiltrati = clienti.filter((c) =>
     c.nome?.toLowerCase().includes(ricercaCliente.toLowerCase())
   )
@@ -46,6 +51,12 @@ export default function RegistrazioneAccesso() {
     if (!clienteId) { setCaniDisponibili([]); return }
     const unsub = subscribeCani(clienteId, setCaniDisponibili)
     return unsub
+  }, [clienteId])
+
+  useEffect(() => {
+    if (!clienteId) { setPacchettiAttivi([]); setPacchettiLoaded(false); return }
+    setPacchettiLoaded(false)
+    getPacchettiAttivi(clienteId).then((p) => { setPacchettiAttivi(p); setPacchettiLoaded(true) })
   }, [clienteId])
 
   const creditiCalcolati = useMemo(() => {
@@ -65,6 +76,17 @@ export default function RegistrazioneAccesso() {
     setNoteAgevolazione('')
   }, [creditiCalcolati])
 
+  // Pay-daily derived values
+  const creditiResiduiTotali = pacchettiAttivi.reduce((s, p) => s + (p.creditiResidui || 0), 0)
+  const isPuramenteGiornaliero = pacchettiLoaded && creditiResiduiTotali === 0
+  const needsScelta = pacchettiLoaded && creditiResiduiTotali > 0 && creditiResiduiTotali < creditiEffettivi
+  const showPagamentoGiornaliero = isPuramenteGiornaliero || needsScelta
+
+  const creditiGiornalieriCalcolati = needsScelta && sceltaGiornaliero === 'misto'
+    ? creditiEffettivi - creditiResiduiTotali
+    : creditiEffettivi
+  const importoGiornaliero = creditiGiornalieriCalcolati * VALORE_CREDITO_GIORNALIERO
+
   function selezionaTipo(tipo) {
     setTipoGiornata(tipo)
     setOrarioIngresso(ORARI_DEFAULT[tipo].ingresso)
@@ -83,6 +105,9 @@ export default function RegistrazioneAccesso() {
     setClienteId(c.id)
     setRicercaCliente(c.nome)
     setCaniSelezionati([])
+    setSceltaGiornaliero('misto')
+    setPagGiornaliero({ pagato: false, metodoPagamento: 'contanti' })
+    setPacchettiLoaded(false)
   }
 
   async function handleSalva(e) {
@@ -90,9 +115,37 @@ export default function RegistrazioneAccesso() {
     if (!clienteId || caniSelezionati.length === 0) return
     setSaving(true)
     try {
-      const { scaleDaPacchetti, creditiNonCoperti } = await scalaCreditiFIFO(clienteId, creditiEffettivi)
+      let scaleDaPacchetti = []
+      let pagamentoGiornalieroData = null
+      let feedbackMsg = 'Accesso salvato!'
       const tipoRilevato = determinaTipoGiornata(orarioIngresso, orarioUscita) || tipoGiornata
-      await addAccesso({
+
+      if (isPuramenteGiornaliero || (needsScelta && sceltaGiornaliero === 'tutto')) {
+        pagamentoGiornalieroData = {
+          crediti: creditiEffettivi,
+          importo: creditiEffettivi * VALORE_CREDITO_GIORNALIERO,
+          pagato: pagGiornaliero.pagato,
+          metodoPagamento: pagGiornaliero.metodoPagamento,
+        }
+      } else if (needsScelta && sceltaGiornaliero === 'misto') {
+        const risultato = await scalaCreditiFIFO(clienteId, creditiResiduiTotali)
+        scaleDaPacchetti = risultato.scaleDaPacchetti
+        const creditiGiornalieri = creditiEffettivi - creditiResiduiTotali
+        pagamentoGiornalieroData = {
+          crediti: creditiGiornalieri,
+          importo: creditiGiornalieri * VALORE_CREDITO_GIORNALIERO,
+          pagato: pagGiornaliero.pagato,
+          metodoPagamento: pagGiornaliero.metodoPagamento,
+        }
+      } else {
+        const { scaleDaPacchetti: s, creditiNonCoperti } = await scalaCreditiFIFO(clienteId, creditiEffettivi)
+        scaleDaPacchetti = s
+        if (creditiNonCoperti > 0) {
+          feedbackMsg = `Accesso salvato. Attenzione: ${creditiNonCoperti} crediti non coperti!`
+        }
+      }
+
+      const accessoData = {
         clienteId,
         data: dataSelezionata,
         cani: caniSelezionati,
@@ -105,17 +158,17 @@ export default function RegistrazioneAccesso() {
         agevolazione,
         noteAgevolazione,
         scaleDaPacchetti,
-      })
-      setFeedback(
-        creditiNonCoperti > 0
-          ? `Accesso salvato. Attenzione: ${creditiNonCoperti} crediti non coperti!`
-          : 'Accesso salvato!'
-      )
+      }
+      if (pagamentoGiornalieroData) accessoData.pagamentoGiornaliero = pagamentoGiornalieroData
+
+      await addAccesso(accessoData)
+      setFeedback(feedbackMsg)
       setClienteId('')
       setRicercaCliente('')
       setCaniSelezionati([])
       setPiscina(false)
       setNote('')
+      setPacchettiLoaded(false)
       setTimeout(() => setFeedback(''), 3000)
     } catch {
       setFeedback('Errore nel salvataggio. Riprova.')
@@ -129,10 +182,23 @@ export default function RegistrazioneAccesso() {
       let scaleDaPacchetti = accessoModifica.scaleDaPacchetti || []
       let avviso = ''
 
+      if (dati.pagamentoGiornaliero) {
+        const isPuroDailyAccesso = scaleDaPacchetti.length === 0
+        let updatedPagGiorn = dati.pagamentoGiornaliero
+        if (isPuroDailyAccesso && dati.creditiEffettivi !== vecchiCrediti) {
+          updatedPagGiorn = {
+            ...updatedPagGiorn,
+            crediti: dati.creditiEffettivi,
+            importo: dati.creditiEffettivi * VALORE_CREDITO_GIORNALIERO,
+          }
+        }
+        await updateAccesso(accessoModifica.id, { ...dati, pagamentoGiornaliero: updatedPagGiorn })
+        setAccessoModifica(null)
+        return
+      }
+
       if (dati.creditiEffettivi !== vecchiCrediti) {
-        // Rimborsa tutti i crediti originali ai pacchetti
         await ripristinaCreditiFIFO(accessoModifica.clienteId, scaleDaPacchetti)
-        // Ri-scala il nuovo totale con FIFO
         const risultato = await scalaCreditiFIFO(accessoModifica.clienteId, dati.creditiEffettivi)
         scaleDaPacchetti = risultato.scaleDaPacchetti
         if (risultato.creditiNonCoperti > 0) {
@@ -315,6 +381,73 @@ export default function RegistrazioneAccesso() {
               )}
             </div>
 
+            {/* Sezione pagamento giornaliero */}
+            {clienteId && showPagamentoGiornaliero && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-amber-800">Pagamento giornaliero</p>
+
+                {needsScelta && (
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="sceltaGiornaliero"
+                        value="misto"
+                        checked={sceltaGiornaliero === 'misto'}
+                        onChange={() => setSceltaGiornaliero('misto')}
+                        className="mt-0.5 accent-amber-600"
+                      />
+                      <span className="text-sm text-amber-900">
+                        Usa {creditiResiduiTotali} cr dal pacchetto + paga {creditiEffettivi - creditiResiduiTotali} cr giornalieri
+                        {' → '}<strong>{((creditiEffettivi - creditiResiduiTotali) * VALORE_CREDITO_GIORNALIERO).toFixed(2)} €</strong>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="sceltaGiornaliero"
+                        value="tutto"
+                        checked={sceltaGiornaliero === 'tutto'}
+                        onChange={() => setSceltaGiornaliero('tutto')}
+                        className="mt-0.5 accent-amber-600"
+                      />
+                      <span className="text-sm text-amber-900">
+                        Paga tutto come giornaliero
+                        {' → '}<strong>{(creditiEffettivi * VALORE_CREDITO_GIORNALIERO).toFixed(2)} €</strong>
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-amber-700">Da pagare</span>
+                  <span className="text-lg font-bold text-amber-900">{importoGiornaliero.toFixed(2)} €</span>
+                </div>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pagGiornaliero.pagato}
+                    onChange={(e) => setPagGiornaliero((p) => ({ ...p, pagato: e.target.checked }))}
+                    className="w-5 h-5 rounded accent-amber-600"
+                  />
+                  <span className="text-sm font-medium text-amber-800">Pagato</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-amber-700">Metodo</span>
+                  <select
+                    value={pagGiornaliero.metodoPagamento}
+                    onChange={(e) => setPagGiornaliero((p) => ({ ...p, metodoPagamento: e.target.value }))}
+                    className="flex-1 border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="contanti">Contanti</option>
+                    <option value="bonifico">Bonifico</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
               <input value={note} onChange={(e) => setNote(e.target.value)} className="input-field" placeholder="Facoltative" />
@@ -344,15 +477,27 @@ export default function RegistrazioneAccesso() {
               <div className="space-y-2">
                 {accessiGiorno.map((a) => {
                   const cl = clienti.find((c) => c.id === a.clienteId)
+                  const pg = a.pagamentoGiornaliero
                   return (
-                    <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-800 text-sm">{cl?.nome || '—'}</p>
+                    <div key={a.id} className={`border rounded-xl p-3 flex items-center justify-between gap-2 ${pg ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-medium text-gray-800 text-sm">{cl?.nome || '—'}</p>
+                          {pg && <span className="text-xs bg-amber-100 text-amber-700 font-medium px-1.5 py-0.5 rounded-full">Giornaliero</span>}
+                        </div>
                         <p className="text-xs text-gray-500">
                           {a.cani?.map((c) => c.nome).join(', ')} · {a.orarioIngresso}–{a.orarioUscita}
                         </p>
+                        {pg && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs font-semibold text-amber-800">{pg.importo?.toFixed(2)} €</span>
+                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${pg.pagato ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {pg.pagato ? 'Pagato' : 'Da pagare'}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <Badge variant="default">{a.creditiEffettivi} cr</Badge>
                         <button
                           onClick={() => setAccessoModifica(a)}
