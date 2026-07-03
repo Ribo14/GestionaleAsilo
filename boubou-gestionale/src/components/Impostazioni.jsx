@@ -10,7 +10,7 @@ export default function Impostazioni({ onCambiaPassword, onLogout }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (nuova !== conferma) { setMsg('Le password non coincidono'); return }
-    if (nuova.length < 4) { setMsg('La password deve essere di almeno 4 caratteri'); return }
+    if (nuova.length < 6) { setMsg('La password deve essere di almeno 6 caratteri'); return }
     setLoading(true)
     const res = await onCambiaPassword(vecchia, nuova)
     if (res.ok) {

@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   getDocs,
-  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -11,21 +10,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  setDoc,
 } from 'firebase/firestore'
 import { db } from './config'
-
-// ── Auth ────────────────────────────────────────────────────────────────────
-
-export async function getPasswordHash() {
-  const ref = doc(db, 'config', 'auth')
-  const snap = await getDoc(ref)
-  return snap.exists() ? snap.data().passwordHash : null
-}
-
-export async function setPasswordHash(hash) {
-  await setDoc(doc(db, 'config', 'auth'), { passwordHash: hash })
-}
 
 // ── Clienti ─────────────────────────────────────────────────────────────────
 
